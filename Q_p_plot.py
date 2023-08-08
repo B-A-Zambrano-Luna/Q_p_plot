@@ -1,397 +1,255 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Apr 23 12:17:25 2022
+Created on Sat Apr  8 16:01:20 2023
 
 @author: LENOVO
 """
-from Q_p import norm_p
-from Q_p_as_fractal import Christiakov_emmending
+
 import numpy as np
-from scipy.spatial.distance import squareform
+import seaborn as sns
 from matplotlib import pyplot as plt
-import pylab
+from scipy.spatial.distance import squareform
 import scipy.cluster.hierarchy as sch
+import pylab
+from p_adic_aux_function import \
+    vectorize_function,\
+    p_adic_Convolution_matrix
+import Q_p
 
 
-def p_adic_matrix(g, Z_k):
-    p = Z_k.get_prime()
-    k = Z_k.get_radio()
-    vect_g = []
-    index = np.array([i for i in Z_k], dtype=int)
-    Dic_index = dict()
-    for a in index:
-        Dic_index[a] = g(a)
-    vect_g = np.array(vect_g)
-    matrix_g = np.zeros((p**k, p**k))
-    num_row = 0
-    for j in index:
-        New_Values = (index - j) % p**k
-        matrix_g[num_row] = np.array([Dic_index[a] for a in New_Values])
-        num_row += 1
-    return matrix_g
+class Q_p_plot(object):
+    def __init__(self, f, Z_k):
+        self.f = f
+        self.Z_k = Z_k
+        self.conv = []
+        self.vect = []
+        self.var2 = []
 
+    def convolution(self):
+        self.conv = p_adic_Convolution_matrix(self.f, self.Z_k)
 
-def p_adic_Convolution_matrix(g, Z_k):
-    p = Z_k.get_prime()
-    k = Z_k.get_radio()
-    vect_g = []
-    index = np.array([i for i in Z_k], dtype=int)
-    Dic_index = dict()
-    for a in index:
-        Dic_index[a] = g(a)
-    vect_g = np.array(vect_g)
-    matrix_g = np.zeros((p**k, p**k))
-    num_row = 0
-    for j in index:
-        New_Values = (index - j) % p**k
-        matrix_g[num_row] = np.array([Dic_index[a] for a in New_Values])
-        num_row += 1
-    return p**(-k)*matrix_g
+    def vector(self):
+        self.vect = np.array([vectorize_function(self.f, self.Z_k)])
 
+    def varibles2(self, t_min, t_max, delta_t):
+        dt = t_min
+        def f_t(x): return self.f(x, dt)
+        self.var2 = np.array([vectorize_function(f_t, self.Z_k)])
+        dt = dt + delta_t
+        while dt <= t_max:
+            def f_t(x): return self.f(x, dt)
+            f_dt_x = np.array([vectorize_function(f_t, self.Z_k)])
+            self.var2 = np.concatenate([self.var2, f_dt_x], axis=0)
+            dt = dt + delta_t
+        self.var2 = np.rot90(self.var2, k=1, axes=(0, 1))
 
-def plot(A, Z_k, As="function",
-         all_tree=True,
-         size=(8, 8),
-         s=1/5,
-         m=0,
-         size_points=0.5):
-    """
-
-
-    Parameters
-    ----------
-    A : TYPE
-        DESCRIPTION.
-    Z_k : TYPE
-        DESCRIPTION.
-    As : TYPE, (optional) Have to be "function",
-                            "kernel", "convolution",
-                            "fractal"
-        DESCRIPTION. The default is "function".
-    all_tree : TYPE, optional
-        DESCRIPTION. The default is True.
-    size : TYPE, optional
-        DESCRIPTION. The default is (8, 8).
-    s : TYPE, optional
-        DESCRIPTION. The default is 1/5.
-    m : TYPE, optional
-        DESCRIPTION. The default is 0.
-    size_points : TYPE, optional
-        DESCRIPTION. The default is 0.5.
-
-    Returns
-    -------
-    None.
-
-    """
-    if As == "function":
-        """ Generate distance matrix. """
-        K = Z_k.get_radio()
-        p = Z_k.get_prime()
-        Number = len(Z_k)
-        Y = np.array([b for b in Z_k])
-        D = np.zeros([Number, Number])
-        C_A = np.zeros([Number, Number])
-        if A == 0:
-            for i in range(Number):
-                for j in range(Number):
-                    D[i, j] = norm_p(Y[i]-Y[j], p)
+    def plot_conv(self, ylabels=True, xlabels=True,
+                  with_title=True, title="",
+                  with_tree=False,
+                  size=(8, 8), cmap="magma"):
+        if self.conv == []:
+            self.convolution()
+        p = self.Z_k.get_prime()
+        if with_tree:
+            """ Generate distance matrix. """
+            D = np.zeros([len(self.Z_k), len(self.Z_k)])
+            for i in self.Z_k:
+                for j in self.Z_k:
+                    D[i, j] = Q_p.norm_p(i-j, p)
+            condensedD = squareform(D)
+            """ Compute and plot first dendrogram. """
+            # First Tree
+            first_map_position = [0.1, 0.25, 0.2, 0.5]
+            fig_tree = pylab.figure(figsize=size)
+            ax1 = fig_tree.add_axes(first_map_position)
+            Y1 = sch.linkage(condensedD)
+            Z1 = sch.dendrogram(Y1, orientation='left')
+            ax1.set_xticks([])
+            ax1.set_xticklabels([], rotation='vertical')
+            ax1.set_yticks([])
+            # ax1.set_ylabel("G_"+str(self.Z_k.get_radio()), loc="center")
+            ax1.set_ylabel("")
+            # Second Tree
+            second_map_position = [0.3, 0.05, 0.56, 0.2]
+            ax2 = fig_tree.add_axes(second_map_position)
+            Z2 = sch.dendrogram(Y1, orientation='bottom')
+            ax2.set_xticks([])
+            ax2.set_xticklabels([], rotation='vertical')
+            ax2.set_yticks([])
+            # ax2.set_ylabel("G_"+str(self.Z_k.get_radio()), loc="center")
+            fig_tree.add_axes([0.3, 0.25, 0.7, 0.5])
+        Z_k_list = list(self.Z_k)
+        ax = sns.heatmap(self.conv, cmap=cmap)
+        if with_tree:
+            ax.set(xlabel="",
+                   ylabel="")
         else:
-            for i in range(Number):
-                for j in range(Number):
-                    D[i, j] = norm_p(Y[i]-Y[j], p)
-                    C_A[i, j] = A(Y[j])
-        condensedD = squareform(D)
+            ax.set(xlabel="p-adic integers",
+                   ylabel="p-adic integers")
+        if with_title and title == "":
+            plt.title("Kernel ", fontsize=13)
+        elif with_title and title != "":
+            plt.title(title)
+        else:
+            plt.title("")
+        if xlabels and ylabels:
+            x_ticks = ax.xaxis.get_ticklocs()
+            y_ticks = ax.yaxis.get_ticklocs()
+            step = round(len(self.Z_k)/len(x_ticks))
+            ax.xaxis.set_ticklabels([Z_k_list[a*step]
+                                     for a in range(len(x_ticks))],
+                                    rotation=90)
+            ax.yaxis.set_ticklabels([Z_k_list[a*step]
+                                     for a in range(len(y_ticks))],
+                                    rotation=0)
+        elif not xlabels and ylabels:
+            ax.xaxis.set_ticklabels([])
+            y_ticks = ax.yaxis.get_ticklocs()
+            step = round(len(self.Z_k)/len(y_ticks))
+            ax.yaxis.set_ticklabels([Z_k_list[a*step]
+                                     for a in range(len(y_ticks))],
+                                    rotation=0)
+        elif not ylabels and xlabels:
+            x_ticks = ax.xaxis.get_ticklocs()
+            step = round(len(self.Z_k)/len(x_ticks))
+            ax.xaxis.set_ticklabels([Z_k_list[a*step]
+                                     for a in range(len(x_ticks))],
+                                    rotation=0)
+            ax.yaxis.set_ticklabels([])
 
-        """ Tree levels"""
-        with_labels = True
-        if K > 3:
-            with_labels = False
+        elif not ylabels and not xlabels:
+            ax.yaxis.set_ticklabels([])
+            ax.xaxis.set_ticklabels([])
 
-        # labels
-        if with_labels:
-            if all_tree:
-                level_max = K
+        if with_tree:
+            return fig_tree
+        else:
+            return ax
+
+    def plot_vect(self, ylabels=True, xlabels=True,
+                  with_title=True, title="",
+                  with_tree=False,
+                  size=(8, 8), cmap="magma"):
+        if self.vect == []:
+            self.vector()
+        p = self.Z_k.get_prime()
+        if with_tree:
+            """ Generate distance matrix. """
+            D = np.zeros([len(self.Z_k), len(self.Z_k)])
+            for i in self.Z_k:
+                for j in self.Z_k:
+                    D[i, j] = Q_p.norm_p(i-j, p)
+            condensedD = squareform(D)
+            """ Compute and plot first dendrogram. """
+            orientation = "top"
+            first_map_position = [0.3, 0.16, 0.477, 0.13]
+            add_axis = [0.3, 0.1, 0.6, 0.06]
+            fig_tree = pylab.figure(figsize=size)
+            ax1 = fig_tree.add_axes(first_map_position)
+            Y1 = sch.linkage(condensedD)
+
+            Z1 = sch.dendrogram(Y1, orientation=orientation)
+            ax1.set_xticks([])
+            ax1.set_xticklabels([], rotation='vertical')
+            ax1.set_yticks([])
+            # ax1.set_ylabel("G_"+str(self.Z_k.get_radio()), loc="center")
+            ax1.set_ylabel("")
+            if with_title:
+                ax1.set_title("Position", loc="center", fontsize=13)
             else:
-                level_max = 0
-            x_levels = []
-            x_sticks = []
-            for i in range(0, K):
-                x_levels.append(p**(-i))
-                x_sticks.append("Level " + str(i))
-            x_levels.append(0)
-            x_sticks.append("Level "+str(K))
+                ax1.set_title("", loc="center")
+            fig_tree.add_axes(add_axis)
+            ax = sns.heatmap(self.vect, cmap=cmap)
         else:
-            x_levels = []
-            x_sticks = []
-        """ y_axis"""
-        if with_labels:
-            Yticks = range(Number)
-            Yticklabels = Y
-            # position heat maps A and B
-            first_map_position = [0.04, 0.1, 0.2, 0.6]
-            second_map_position = [0.3, 0.74, 0.6, 0.2]
-            # position heat maps X_0 and U
-            position_tree_input = [0.3, 0.3, 0.6, 0.25]
+            fig, ax = plt.subplots(figsize=(12, 2))
+            ax = sns.heatmap(self.vect, ax=ax, cmap=cmap)
+
+        if with_title and title == "":
+            plt.title("Function ")
+        elif with_title and title != "":
+            plt.title(title)
         else:
-            # labels
-            Yticks = []
-            Yticklabels = []
-            # position heat maps A and B
-            first_map_position = [0.1, 0.1, 0.2, 0.6]
-            second_map_position = [0.3, 0.702, 0.6, 0.2]
-            # position heat maps X_0 and U
-            position_tree_input = [0.3, 0.25, 0.6, 0.25]
-        """  Heat map of the A"""
-        fig = pylab.figure(figsize=size)
-
-        # Compute and plot second dendrogram.
-        ax2 = fig.add_axes(position_tree_input)
-        Y2 = sch.linkage(condensedD, method='single')
-        Z2 = sch.dendrogram(Y2)
-        ax2.set_yticks(x_levels)
-        ax2.set_yticklabels(x_sticks, rotation='horizontal')
-        ax2.set_xticklabels(Yticklabels, minor=False)
-        plt.title("As Function")
-
-        # Function A
-        axmatrix = fig.add_axes([0.3, 0.1, 0.6, 0.15])
-        idx2 = Z2['leaves']
-        im = axmatrix.matshow(C_A, aspect='auto', origin='lower')
-        axmatrix.set_xticks([])
-        axmatrix.set_yticks([])
-
-        # Plot colorbar.
-        axcolor = fig.add_axes([0.98, 0.1, 0.05, 0.45])
-        pylab.colorbar(im, cax=axcolor, format='%.4f')
-
-        # Plot axes
-        axmatrix.set_xticks(Yticks)
-        axmatrix.set_xticklabels(Yticklabels, minor=False)
-        axmatrix.xaxis.set_label_position('bottom')
-        axmatrix.xaxis.tick_bottom()
-
-        pylab.xticks(rotation=-90, fontsize=8)
-
-    elif As == "kernel":
-        """ Generate distance matrix. """
-        K = Z_k.get_radio()
-        p = Z_k.get_prime()
-        Number = len(Z_k)
-        Y = np.array([b for b in Z_k])
-        D = np.zeros([Number, Number])
-        """ Generate distance matrix. """
-        if A == 0:
-            C_A = np.zeros([Number, Number])
-            for i in range(Number):
-                for j in range(Number):
-                    D[i, j] = norm_p(Y[i]-Y[j], p)
+            plt.title("")
+        if with_tree:
+            ax.set(xlabel="",
+                   ylabel="")
         else:
-            C_A = p_adic_matrix(A, Z_k)
-            for i in range(Number):
-                for j in range(Number):
-                    D[i, j] = norm_p(Y[i]-Y[j], p)
-        condensedD = squareform(D)
-
-        """ Tree levels"""
-        with_labels = True
-        if K > 3:
-            with_labels = False
-
-        # labels
-        if with_labels:
-            if all_tree:
-                level_max = K
-            else:
-                level_max = 0
-            x_levels = []
-            x_sticks = []
-            for i in range(0, K):
-                x_levels.append(p**(-i))
-                x_sticks.append("Level " + str(i))
-            x_levels.append(0)
-            x_sticks.append("Level "+str(K))
+            ax.set(xlabel="p-adic integers",
+                   ylabel="")
+            ax.yaxis.set_ticks([])
+        if xlabels:
+            Z_k_list = list(self.Z_k)
+            ax.xaxis.set_ticklabels(Z_k_list,
+                                    rotation=0)
         else:
-            x_levels = []
-            x_sticks = []
-        """ y_axis"""
-        if with_labels:
-            Yticks = range(Number)
-            Yticklabels = Y
-            # position heat maps A and B
-            first_map_position = [0.04, 0.1, 0.2, 0.6]
-            second_map_position = [0.3, 0.74, 0.6, 0.2]
-            # position heat maps X_0 and U
-            position_tree_input = [0.3, 0.3, 0.6, 0.25]
+            ax.xaxis.set_ticklabels([])
+
+        if with_tree:
+            return fig_tree
         else:
-            # labels
-            Yticks = []
-            Yticklabels = []
-            # position heat maps A and B
-            first_map_position = [0.1, 0.1, 0.2, 0.6]
-            second_map_position = [0.3, 0.702, 0.6, 0.2]
-            # position heat maps X_0 and U
-            position_tree_input = [0.3, 0.25, 0.6, 0.25]
-        # Compute and plot first dendrogram.
-        fig = pylab.figure(figsize=size)
-        ax1 = fig.add_axes(first_map_position)
-        Y1 = sch.linkage(condensedD, method='centroid')
-        Z1 = sch.dendrogram(Y1, orientation='left')
-        ax1.set_xticks(x_levels)
-        ax1.set_xticklabels(x_sticks, rotation='vertical')
-        ax1.set_yticks([])
+            return ax
 
-        # Compute and plot second dendrogram.
-        ax2 = fig.add_axes(second_map_position)
-        Y2 = sch.linkage(condensedD, method='single')
-        Z2 = sch.dendrogram(Y2)
-        ax2.set_yticks(x_levels)
-        ax2.set_yticklabels(x_sticks, rotation='horizontal')
-        ax2.set_xticklabels(Yticklabels, minor=False)
-        plt.title("As Kernel")
+    def plot2var(self, t_min=0, t_max=1, delta_t=0.05,
+                 ylabels=True, xlabels=True,
+                 with_title=True, title="",
+                 with_tree=False,
+                 size=(8, 8), cmap="magma"):
+        if self.var2 == []:
+            self.varibles2(t_min, t_max, delta_t)
+        p = self.Z_k.get_prime()
 
-        # Plot distance matrix.
-        axmatrix = fig.add_axes([0.3, 0.1, 0.6, 0.6])
-        idx1 = Z1['leaves']
-        idx2 = Z2['leaves']
-        im = axmatrix.matshow(C_A, aspect='auto', origin='lower')
-        axmatrix.set_xticks([])
-        axmatrix.set_yticks([])
-
-        # Plot colorbar.
-        axcolor = fig.add_axes([0.98, 0.1, 0.05, 0.6])
-        pylab.colorbar(im, cax=axcolor, format='%.4f')
-        # fig.show()
-
-        # Plot axes
-        axmatrix.set_xticks(Yticks)
-        axmatrix.set_xticklabels(Yticklabels, minor=False)
-        axmatrix.xaxis.set_label_position('bottom')
-        axmatrix.xaxis.tick_bottom()
-
-        pylab.xticks(rotation=-90, fontsize=8)
-
-        # axmatrix.set_yticks(range(40))
-        axmatrix.set_yticks(Yticks)
-        axmatrix.set_yticklabels(Yticklabels, minor=False)
-        axmatrix.yaxis.set_label_position('right')
-    elif As == "convolution":
-        """ Generate distance matrix. """
-        K = Z_k.get_radio()
-        p = Z_k.get_prime()
-        Number = len(Z_k)
-        Y = np.array([b for b in Z_k])
-        D = np.zeros([Number, Number])
-        """ Generate distance matrix. """
-        if A == 0:
-            C_A = np.zeros([Number, Number])
-            for i in range(Number):
-                for j in range(Number):
-                    D[i, j] = norm_p(Y[i]-Y[j], p)
+        if with_tree:
+            """ Generate distance matrix. """
+            D = np.zeros([len(self.Z_k), len(self.Z_k)])
+            for i in self.Z_k:
+                for j in self.Z_k:
+                    D[i, j] = Q_p.norm_p(i-j, p)
+            condensedD = squareform(D)
+            """ Compute and plot first dendrogram. """
+            first_map_position = [0.1, 0.1, 0.2, 0.5]
+            fig_tree = pylab.figure(figsize=size)
+            ax1 = fig_tree.add_axes(first_map_position)
+            Y1 = sch.linkage(condensedD)
+            Z1 = sch.dendrogram(Y1, orientation='left')
+            ax1.set_xticks([])
+            ax1.set_xticklabels([], rotation='vertical')
+            ax1.set_yticks([])
+            ax1.set_ylabel("Position", fontsize=18)
+            fig_tree.add_axes([0.3, 0.1, 1.0, 0.5])
+        ax = sns.heatmap(self.var2, cmap=cmap)
+        if with_tree:
+            ax.set_xlabel("Time", fontsize=18)
+            ax.set_ylabel("")
         else:
-            C_A = p_adic_Convolution_matrix(A, Z_k)
-            for i in range(Number):
-                for j in range(Number):
-                    D[i, j] = norm_p(Y[i]-Y[j], p)
-        condensedD = squareform(D)
-
-        """ Tree levels"""
-        with_labels = True
-        if K > 3:
-            with_labels = False
-
-        # labels
-        if with_labels:
-            if all_tree:
-                level_max = K
-            else:
-                level_max = 0
-            x_levels = []
-            x_sticks = []
-            for i in range(0, K):
-                x_levels.append(p**(-i))
-                x_sticks.append("Level " + str(i))
-            x_levels.append(0)
-            x_sticks.append("Level "+str(K))
+            ax.set(xlabel="Time",
+                   ylabel="p-adic integers")
+        if with_title and title == "":
+            plt.title("Function")
+        elif with_title and title != "":
+            plt.title(title)
         else:
-            x_levels = []
-            x_sticks = []
-        """ y_axis"""
-        if with_labels:
-            Yticks = range(Number)
-            Yticklabels = Y
-            # position heat maps A and B
-            first_map_position = [0.04, 0.1, 0.2, 0.6]
-            second_map_position = [0.3, 0.74, 0.6, 0.2]
-            # position heat maps X_0 and U
-            position_tree_input = [0.3, 0.3, 0.6, 0.25]
+            plt.title("")
+        x_ticks = ax.xaxis.get_ticklocs()
+        if xlabels:
+            t_step = int((t_max-t_min)/delta_t)
+            step = t_step/(len(x_ticks)-1)
+            ax.xaxis.set_ticklabels([round(t*step*delta_t+t_min, 2)
+                                     for t in range(len(x_ticks))])
         else:
-            # labels
-            Yticks = []
-            Yticklabels = []
-            # position heat maps A and B
-            first_map_position = [0.1, 0.1, 0.2, 0.6]
-            second_map_position = [0.3, 0.702, 0.6, 0.2]
-            # position heat maps X_0 and U
-            position_tree_input = [0.3, 0.25, 0.6, 0.25]
-        # Compute and plot first dendrogram.
-        fig = pylab.figure(figsize=size)
-        ax1 = fig.add_axes(first_map_position)
-        Y1 = sch.linkage(condensedD, method='centroid')
-        Z1 = sch.dendrogram(Y1, orientation='left')
-        ax1.set_xticks(x_levels)
-        ax1.set_xticklabels(x_sticks, rotation='vertical')
-        ax1.set_yticks([])
+            ax.xaxis.set_ticklabels([])
 
-        # Compute and plot second dendrogram.
-        ax2 = fig.add_axes(second_map_position)
-        Y2 = sch.linkage(condensedD, method='single')
-        Z2 = sch.dendrogram(Y2)
-        ax2.set_yticks(x_levels)
-        ax2.set_yticklabels(x_sticks, rotation='horizontal')
-        ax2.set_xticklabels(Yticklabels, minor=False)
-        plt.title("As Convolution")
-
-        # Plot distance matrix.
-        axmatrix = fig.add_axes([0.3, 0.1, 0.6, 0.6])
-        idx1 = Z1['leaves']
-        idx2 = Z2['leaves']
-        im = axmatrix.matshow(C_A, aspect='auto', origin='lower')
-        axmatrix.set_xticks([])
-        axmatrix.set_yticks([])
-
-        # Plot colorbar.
-        axcolor = fig.add_axes([0.98, 0.1, 0.05, 0.6])
-        pylab.colorbar(im, cax=axcolor, format='%.4f')
-        # fig.show()
-
-        # Plot axes
-        axmatrix.set_xticks(Yticks)
-        axmatrix.set_xticklabels(Yticklabels, minor=False)
-        axmatrix.xaxis.set_label_position('bottom')
-        axmatrix.xaxis.tick_bottom()
-
-        pylab.xticks(rotation=-90, fontsize=8)
-
-        # axmatrix.set_yticks(range(40))
-        axmatrix.set_yticks(Yticks)
-        axmatrix.set_yticklabels(Yticklabels, minor=False)
-        axmatrix.yaxis.set_label_position('right')
-    elif As == "fractal":
-        x_position, y_position = Christiakov_emmending(Z_k, m, s)
-        if A == 0:
-            A_list = np.zeros(len(Z_k))
+        if ylabels:
+            y_ticks = ax.yaxis.get_ticklocs()
+            Z_k_list = list(self.Z_k)
+            step = round(len(self.Z_k)/len(y_ticks))
+            y_labels = [Z_k_list[a*step] for a in range(len(y_ticks))]
+            y_labels.reverse()
+            ax.yaxis.set_ticklabels(y_labels,
+                                    rotation=0)
         else:
-            A_list = []
-            for a in Z_k:
-                A_list.append(A(a))
-        # """Show function A"""
-        fig_tree = pylab.figure(figsize=size)
-        im = plt.scatter(x_position,
-                         y_position,
-                         c=A_list,
-                         s=size_points)
-        plt.title("As function")
-        """ Plot colorbar. """
-        axcolor = fig_tree.add_axes([0.95, 0.1, 0.05, 0.6])
-        pylab.colorbar(im, cax=axcolor)
+            ax.yaxis.set_ticklabels([], rotation=0)
+
+        if with_tree:
+            return fig_tree
+        else:
+            return ax
